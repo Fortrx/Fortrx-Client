@@ -1,0 +1,8 @@
+httpx
+websockets
+cryptography
+python-dotenv
+pydantic
+typer
+rich
+anyio
