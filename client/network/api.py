@@ -17,12 +17,17 @@ def _headers():
 
 def get(endpoint: str, **kwargs):
     url = settings.SERVER_URL + endpoint
-    response = httpx.get(url,header = _headers(),**kwargs)
+    response = httpx.get(url,headers = _headers(),**kwargs)
     return response
 
-def post(endpoint:str,json:dict=None,**kwargs):
+def post(endpoint:str,json:dict=None,data:dict=None,**kwargs):
     url = settings.SERVER_URL + endpoint
-    response = httpx.post(url,json=json,headers=_headers(),**kwargs)
+    response = httpx.post(
+        url,
+        json=json,
+        data=data,
+        headers=_headers() | kwargs.pop("headers",{}),
+        **kwargs)
     return response
 
 def delete(endpoint:str,**kwargs):

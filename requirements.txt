@@ -6,3 +6,4 @@ pydantic
 typer
 rich
 anyio
+pydantic-settings

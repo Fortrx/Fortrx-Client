@@ -1,4 +1,4 @@
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     SERVER_URL: str = "http://localhost:8000"
     LOCAL_STORAGE_PATH: str = ".fortrx"
