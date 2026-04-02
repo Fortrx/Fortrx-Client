@@ -1,0 +1,23 @@
+from client.network.api import get,post,raise_for_status
+
+def upload_key_bundle(
+    identity_key:str,
+    signed_prekey: str,
+    signed_prekey_signature: str,
+    prekey_id:int,
+    one_time_prekeys: list[str]
+):
+    response = post("/keys/upload",json ={
+        "identity_key":identity_key,
+        "signed_prekey":signed_prekey,
+        "signed_prekey_signature":signed_prekey_signature,
+        "prekey_id":prekey_id,
+        "one_time_prekeys":one_time_prekeys
+    })
+    raise_for_status(response,context="upload_key_bundle")
+    return response.json()
+
+def fetch_key_bundle(user_id:int):
+    response = get(f"/keys/{user_id}")
+    raise_for_status(response,context="fetch_key_bundle")
+    return response.json()

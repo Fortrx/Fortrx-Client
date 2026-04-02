@@ -38,7 +38,7 @@ def delete(endpoint:str,**kwargs):
 def raise_for_status(response:httpx.Response,context:str=""):
     if response.status_code >= 400:
         try:
-            detail = response.json().get("detail",responnse.text)
+            detail = response.json().get("detail",response.text)
         except Exception:
             detail = response.text
         raise FortrxAPIError(
