@@ -6,7 +6,7 @@ app = typer.Typer(name="fortrx",help="Encrypted Messaging Client")
 
 app.command()(register.register)
 app.command()(login.login)
-app.command()(send.send)
+app.command()(send.send_cmd)
 app.command()(inbox.inbox)
 app.command()(verify.verify)
 app.command()(init.init)

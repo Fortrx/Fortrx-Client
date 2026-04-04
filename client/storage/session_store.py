@@ -18,12 +18,13 @@ def serialize_state(state:RatchetState):
         "dh_sending_private":_b64e(state.dh_sending_private),
         "dh_sending_public":_b64e(state.dh_sending_public),
         "dh_remote_public":_b64e(state.dh_remote_public),
+        "recipient_ik_public":_b64e(getattr(state,"recipient_ik_public",None)),
         "send_count": state.send_count,
         "recv_count": state.recv_count
     }
 
 def deserialize_state(data:dict):
-    return RatchetState(
+    state = RatchetState(
         root_key = _b64d(data["root_key"]),
         sending_chain_key=_b64d(data["sending_chain_key"]),
         recv_chain_key=_b64d(data["recv_chain_key"]),
@@ -33,6 +34,8 @@ def deserialize_state(data:dict):
         send_count=data["send_count"],
         recv_count=data["recv_count"]
     )
+    state.recipient_ik_public = _b64d(data.get("recipient_ik_public"))
+    return state
 
 def save_sessions(sessions:dict,password:str=None):
     password = password or settings.STORAGE_PASSWORD

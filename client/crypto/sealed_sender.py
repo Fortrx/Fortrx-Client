@@ -3,6 +3,21 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey,X25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding,PublicFormat
+
+def _json_safe(obj):
+    if isinstance(obj, (bytes, bytearray)):
+        return base64.b64encode(bytes(obj)).decode()
+    elif isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple, set)):
+        return [_json_safe(i) for i in obj]
+    elif hasattr(obj, "public_bytes"):
+        return base64.b64encode(
+            obj.public_bytes(encoding=Encoding.Raw, format=PublicFormat.Raw)
+        ).decode()
+    else:
+        return obj
 
 def seal(
     sender_id:int,
@@ -27,7 +42,7 @@ def seal(
         "sender_id":sender_id,
         "sender_ik_public":base64.b64encode(sender_ik_public).decode(),
         "ciphertext": base64.b64encode(ciphertext).decode(),
-        "header":header
+        "header": _json_safe(header)
     }).encode()
     nonce = os.urandom(12)
     encrypted = AESGCM(key).encrypt(nonce,inner,None)
