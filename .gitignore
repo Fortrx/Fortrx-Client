@@ -2,3 +2,4 @@
 __pycache__/
 .fortrx/
 *.pyc.fortrx/
+.pytest_cache

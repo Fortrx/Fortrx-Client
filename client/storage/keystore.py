@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from client.config import settings
+from client.network.auth import get_me
 
 console = Console()
 
@@ -43,23 +44,60 @@ def save_keys(keys:dict,password:str = None):
     password = password or settings.STORAGE_PASSWORD
     if not password:
         raise StorageError("No storage password set")
-    path = Path(settings.KEYS_FILE)
-    path.parent.mkdir(parents=True,exist_ok=True)
+    # Save keys to a per-user file to avoid overwriting other accounts.
+    user_id = keys.get("user_id")
+    path_dir = Path(settings.LOCAL_STORAGE_PATH)
+    path_dir.mkdir(parents=True,exist_ok=True)
     data = json.dumps(keys).encode()
     encrypted = _encrypt(data,password)
-    path.write_bytes(encrypted)
+    if user_id:
+        user_path = path_dir / f"keys_{user_id}.enc"
+        user_path.write_bytes(encrypted)
+    # Also save legacy path for compatibility
+    legacy_path = Path(settings.KEYS_FILE)
+    legacy_path.parent.mkdir(parents=True,exist_ok=True)
+    legacy_path.write_bytes(encrypted)
 
 def load_keys(password:str=None):
     password = password or settings.STORAGE_PASSWORD
-    path = Path(settings.KEYS_FILE)
-    if not path.exists():
-        raise StorageError("No keys found. Run 'fortrx init' first.")
-    encrypted = path.read_bytes()
+    # Prefer a per-user key file when possible
+    # Try to determine current user via API if token is set
+    user_path = None
+    try:
+        me = get_me()
+        uid = me.get("id")
+        candidate = Path(settings.LOCAL_STORAGE_PATH) / f"keys_{uid}.enc"
+        if candidate.exists():
+            user_path = candidate
+    except Exception:
+        # ignore any errors; we'll try other fallbacks
+        user_path = None
+
+    if user_path and user_path.exists():
+        encrypted = user_path.read_bytes()
+    else:
+        # fallback to legacy file
+        legacy = Path(settings.KEYS_FILE)
+        if legacy.exists():
+            encrypted = legacy.read_bytes()
+        else:
+            # if there's exactly one per-user file, use it
+            p = Path(settings.LOCAL_STORAGE_PATH)
+            candidates = list(p.glob('keys_*.enc'))
+            if len(candidates) == 1:
+                encrypted = candidates[0].read_bytes()
+            else:
+                raise StorageError("No keys found. Run 'fortrx init' first.")
+
     data = _decrypt(encrypted,password)
     return json.loads(data)
 
 def keys_exist():
-    return Path(settings.KEYS_FILE).exists()
+    legacy = Path(settings.KEYS_FILE)
+    if legacy.exists():
+        return True
+    p = Path(settings.LOCAL_STORAGE_PATH)
+    return any(p.glob('keys_*.enc'))
 
 def load_keys_or_exit(password:str=None):
     try:

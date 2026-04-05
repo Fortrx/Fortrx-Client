@@ -7,3 +7,4 @@ typer
 rich
 anyio
 pydantic-settings
+passlib

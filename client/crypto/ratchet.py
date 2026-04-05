@@ -16,6 +16,7 @@ class RatchetState:
     dh_remote_public:bytes
     send_count: int = 0
     recv_count: int = 0
+    skipped_message_keys: dict = None
     
 def _hkdf(salt:bytes,input_key:bytes):
     out = HKDF(
@@ -50,7 +51,8 @@ def init_ratchet_sender(shared_secret:bytes,recipient_ratchet_public:bytes):
         recv_chain_key=b"\x00"*32,
         dh_sending_private=priv,
         dh_sending_public = pub,
-        dh_remote_public = recipient_ratchet_public
+        dh_remote_public = recipient_ratchet_public,
+        skipped_message_keys={}
     )
 
 def init_ratchet_receiver(shared_secret:bytes,our_ratchet_private:bytes):
@@ -62,7 +64,8 @@ def init_ratchet_receiver(shared_secret:bytes,our_ratchet_private:bytes):
         recv_chain_key=b"\x00"*32,
         dh_sending_private=our_ratchet_private,
         dh_sending_public=pub,
-        dh_remote_public=None
+        dh_remote_public=None,
+        skipped_message_keys={}
     )
 
 def derive_message_key(chain_key:bytes):
@@ -87,6 +90,7 @@ def dh_ratchet_step(state:RatchetState,their_new_public:bytes):
     state.dh_remote_public = their_new_public
     state.recv_count = 0
     state.send_count = 0
+    state.skipped_message_keys = {}
     return state
 
 def ratchet_encrypt(state:RatchetState,plaintext:bytes):
@@ -100,7 +104,7 @@ def ratchet_encrypt(state:RatchetState,plaintext:bytes):
     
     header = {
         "dh_public": base64.b64encode(state.dh_sending_public).decode(),
-        "send_sount":state.send_count,
+        "send_count":state.send_count,
         "recv_count":state.recv_count
     }
     return header, nonce + ciphertext
@@ -110,13 +114,38 @@ def ratchet_decrypt(state:RatchetState,header:dict,ciphertext:bytes):
     
     if state.dh_remote_public != their_pub:
         dh_ratchet_step(state,their_pub)
-        
-    msg_key,next_chain = derive_message_key(state.recv_chain_key)
-    state.recv_chain_key = next_chain
-    state.recv_count += 1
-    
+    # Advance the receive chain one step at a time until we reach the
+    # sender's reported send_count. Do NOT jump or overwrite recv_count.
+    target = int(header.get("send_count", 0))
+
+    if target < state.recv_count:
+        # Check if we have a skipped key for this message
+        skipped = state.skipped_message_keys or {}
+        mk = skipped.pop(target, None)
+        if mk is None:
+            raise ValueError("stale or duplicate message: header.send_count < state.recv_count")
+        # use the skipped key
+        nonce = ciphertext[:12]
+        data = ciphertext[12:]
+        aes = AESGCM(mk)
+        plaintext = aes.decrypt(nonce,data,None)
+        return plaintext
+
+    mk = None
+    # Advance chain, storing skipped keys for out-of-order delivery
+    while state.recv_count < target:
+        mk, next_chain = derive_message_key(state.recv_chain_key)
+        # if this is not the final message, store the key for possible out-of-order arrival
+        if state.recv_count + 1 < target:
+            if state.skipped_message_keys is None:
+                state.skipped_message_keys = {}
+            state.skipped_message_keys[state.recv_count + 1] = mk
+        state.recv_chain_key = next_chain
+        state.recv_count += 1
+
+    # mk now holds the message key for this message
     nonce = ciphertext[:12]
     data = ciphertext[12:]
-    aes = AESGCM(msg_key)
+    aes = AESGCM(mk)
     plaintext = aes.decrypt(nonce,data,None)
     return plaintext

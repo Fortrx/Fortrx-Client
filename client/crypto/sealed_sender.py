@@ -27,7 +27,7 @@ def seal(
     header:dict
 ):
     ek_private = X25519PrivateKey.generate()
-    ek_public = ek_private.public_key().public_bytes_raw()
+    ek_public = ek_private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     
     recipient_pub = X25519PublicKey.from_public_bytes(recipient_ik_public)
     dh_out = ek_private.exchange(recipient_pub)
