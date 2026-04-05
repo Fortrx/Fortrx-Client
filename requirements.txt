@@ -8,3 +8,5 @@ rich
 anyio
 pydantic-settings
 passlib
+pytest
+pytest-asyncio

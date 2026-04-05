@@ -1,5 +1,15 @@
 .env
 __pycache__/
+*.pyc
 .fortrx/
-*.pyc.fortrx/
-.pytest_cache
+
+# Testing
+.pytest_cache/
+.tox/
+*.log
+.coverage
+.coverage.*
+htmlcov/
+dist/
+build/
+*.egg-info/
