@@ -15,7 +15,7 @@ async def connect(user_id:int, token:str=None):
 async def listen(user_id:int, on_messaage:callable, token:str=None):
     if not token:
         token = load_token()
-    MAX_RETRIES = 50
+    MAX_RETRIES = 5
     retry_delay = 2
     for attempt in range(MAX_RETRIES):
         try:
