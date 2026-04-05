@@ -7,6 +7,7 @@ from client.network.keys import fetch_key_bundle
 from client.network.messages import send_message as api_send
 from client.network.messages import fetch_inbox,confirm_delivery
 from client.storage.session_store import load_session, save_session
+from client.storage.verification_store import is_verified
 from client.storage.keystore import load_keys
 import json
 
@@ -94,7 +95,8 @@ def send(
         state.recipient_ik_public = recipient_ik
     else:
         recipient_ik = state.recipient_ik_public
-
+    if not is_verified(recipient_id):
+        print(f"⚠ Unverified contact {recipient_id}. Run: python run.py verify {recipient_id}")
     header, ciphertext = ratchet_encrypt(state, plaintext.encode())
 
     if is_new_session:
