@@ -1,4 +1,5 @@
 import base64
+import asyncio
 from client.crypto.x3dh import x3dh_sender, x3dh_receiver
 from client.crypto.ratchet import init_ratchet_sender, ratchet_encrypt,init_ratchet_receiver,ratchet_decrypt
 from client.crypto.sealed_sender import seal,unseal
@@ -204,3 +205,71 @@ def receive(storage_password: str):
                 "message_id": msg.get("id")
             })
     return results
+
+async def receive_one(push_payload: dict, storage_password:str):
+    keys = load_keys(password=storage_password)
+    my_ik_private = b64d(keys["dh_private"])
+    my_spk_private = b64d(keys["signed_prekey_private"])
+    my_id = keys["user_id"]
+    otpk_lookup = {
+        kp["public"]: b64d(kp["private"])
+        for kp in keys["one_time_prekeys"]
+    }
+    messages = fetch_inbox()
+    msg = next(
+        (m for m in messages if m["message_number"] == push_payload["message_number"]),
+    )
+    if not msg:
+        return None
+    try:
+        sealed_bytes = b64d(msg["sealed_blob"])
+        inner = unseal(my_ik_private,sealed_bytes)
+        sender_id = inner["sender_id"]
+        sender_ik_pub = b64d(inner["sender_ik_public"])
+        ciphertext = b64d(inner["ciphertext"])
+        header = inner["header"]
+        x3dh_data = header.get("x3dh")
+        is_new_session = x3dh_data is not None
+        if is_new_session:
+            ek_public = b64d(x3dh_data["ek_public"])
+            otpk_used = x3dh_data["otpk_used"]
+            otpk_public = x3dh_data.get("otpk_public")
+            otpk_private = None
+            if otpk_used and otpk_public:
+                otpk_private = otpk_lookup.get(otpk_public)
+            shared_secret = x3dh_receiver(
+                ik_b_private=my_ik_private,
+                spk_b_private=my_spk_private,
+                ik_a_public=sender_ik_pub,
+                ek_a_public=ek_public,
+                opk_b_private=otpk_private
+            )
+            state = init_ratchet_receiver(
+                shared_secret=shared_secret,
+                our_ratchet_private=my_spk_private
+            )
+            state.recipient_ik_public = sender_ik_pub
+        else:
+            state = load_session(sender_id,password=storage_password)
+            if state is None:
+                return {
+                    "sender_id": "unknown",
+                    "plaintext": "[session lost - cannot decrypt]",
+                    "message_id": msg["id"]
+                }
+        plaintext_bytes = ratchet_decrypt(state,header,ciphertext)
+        plaintext = plaintext_bytes.decode()
+        save_session(sender_id,state,password=storage_password)
+        confirm_delivery(msg["id"])
+        return {
+            "sender_id": sender_id,
+            "plaintext": plaintext,
+            "message_id": msg["id"],
+            "message_number": msg["message_number"]
+        }
+    except Exception as se:
+        return {
+            "sender_id":"unknown",
+            "plaintext": f"[decrypt error: {e}]",
+            "message_id": msg.get("id")
+        }
