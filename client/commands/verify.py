@@ -33,11 +33,11 @@ def _display_safety_number(
     console.print()
     console.print(Panel(
         f"[bold cyan] Safety Number[/bold cyan] with"
-        f"[bold]{their_username}[/bold] (ID: {their_id})",
+        f"[bold] {their_username}[/bold] (ID: {their_id})",
         expand=False
     ))
     console.print()
-    number = safety_number.split()
+    numbers = safety_number.split()
     row1 = " ".join(numbers[:3])
     row2 = " ".join(numbers[3:])
     console.print(f" [bold white]{row1}[/bold white]")

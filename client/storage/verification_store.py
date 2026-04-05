@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from datetime import datatime
+from datetime import datetime
 
 FILE = Path(".fortrx/verified.json")
 
