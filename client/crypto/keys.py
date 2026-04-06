@@ -2,6 +2,10 @@ import base64
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey,X25519PublicKey
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding,PrivateFormat,PublicFormat,NoEncryption
+from client.crypto.pq_keys import (
+    generate_kyber_keypair,
+    sign_kyber_prekey as _sign_kyber_prekey
+)
 
 def generate_identity_keypair():
     dh_private = X25519PrivateKey.generate()
@@ -52,3 +56,17 @@ def encode_public_key(raw_bytes:bytes):
     
 def decode_public_key(b64_str:str):
     return base64.b64decode(b64_str)
+
+
+
+def generate_kyber_prekey(signing_private_bytes: bytes):
+    kp = generate_kyber_keypair()
+    sig = _sign_kyber_prekey(
+        ed25519_signing_private_bytes=signing_private_bytes,
+        kyber_public_bytes=kp["public"]
+    )
+    return {
+        "public":kp["public"],
+        "private": kp["private"],
+        "signature":sig
+    }

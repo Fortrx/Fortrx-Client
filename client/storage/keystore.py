@@ -40,6 +40,12 @@ def _decrypt(data:bytes,password:str):
     except Exception:
         raise StorageError("Wrong password or corrupted file")
 
+def has_kyber_keys(keys:dict):
+    return (
+        "kyber_prekey_public" in keys and
+        keys["kyber_prekey_public"] is not None
+    )
+
 def save_keys(keys:dict,password:str = None):
     password = password or settings.STORAGE_PASSWORD
     if not password:
@@ -101,7 +107,11 @@ def keys_exist():
 
 def load_keys_or_exit(password:str=None):
     try:
-        return load_keys(password)
+        keys = load_keys(password)
+        if not has_kyber_keys(keys):
+            console.print("[yellow]⚠ No post-quantum keys found[/yellow]")
+            console.print("[dim]Run 'fortress init --force' to upgrade[/dim]")
+        return keys
     except StorageError as e:
         console.print(f"[red]❌ Cannot load keys:[/red] {e}")
         console.print("[dim] Run 'fortrx init' to set up your keys.[/din]")

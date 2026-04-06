@@ -10,3 +10,4 @@ pydantic-settings
 passlib
 pytest
 pytest-asyncio
+pycryptodome
