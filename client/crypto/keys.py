@@ -35,6 +35,19 @@ def generate_signed_prekey(signing_private_key_bytes:bytes):
         "signature":signature
     }
 
+
+def verify_signed_prekey(
+    signing_public_key_bytes: bytes,
+    signed_prekey_public_bytes: bytes,
+    signature: bytes
+):
+    try:
+        signing_public = Ed25519PublicKey.from_public_bytes(signing_public_key_bytes)
+        signing_public.verify(signature, signed_prekey_public_bytes)
+        return True
+    except Exception:
+        return False
+
 def generate_one_time_prekeys(count:int = 10):
     keys = []
     for _ in range(count):

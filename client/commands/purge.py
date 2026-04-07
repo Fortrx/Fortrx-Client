@@ -7,9 +7,13 @@ app = typer.Typer()
 console = Console()
 
 @app.command()
-def purge():
+def purge(
+    password: str = typer.Option(None, "--password", "-p")
+):
     """Purge all messages in the server inbox by confirming delivery."""
-    load_and_set_token()
+    if not password:
+        password = typer.prompt("Storage password", hide_input=True)
+    load_and_set_token(password)
     msgs = fetch_inbox()
     if not msgs:
         console.print("[dim]No messages to purge.[/dim]")

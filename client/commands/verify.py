@@ -1,7 +1,4 @@
 import typer
-import json
-from pathlib import Path
-from datetime import datetime
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -10,9 +7,8 @@ from client.network.safety import fetch_safety_number,fetch_user_info
 from client.network.api import FortrxAPIError
 from client.storage.token_store import load_and_set_token
 from client.storage.keystore import load_keys
-from client.storage.verification_store import save_verification,load_verifications,is_verified,FILE
+from client.storage.verification_store import save_verification
 from client.crypto.fingerprint import generate_safety_number
-from client.config import settings
 
 import base64
 
@@ -28,7 +24,8 @@ def _display_safety_number(
     their_fp,
     their_username,
     their_id,
-    computed_locally
+    computed_locally,
+    storage_password: str,
 ):
     console.print()
     console.print(Panel(
@@ -68,7 +65,7 @@ def _display_safety_number(
     verified = Confirm.ask("Do numbers match?", default=False)
 
     if verified:
-        save_verification(their_id, safety_number)
+        save_verification(their_id, safety_number, password=storage_password)
         console.print(f"[green]✓ Verified {their_username}[/green]")
     else:
         console.print("[yellow]⚠ Not verified[/yellow]")
@@ -79,9 +76,9 @@ def verify(
     password: str = typer.Option(None,"--password","-p"),
     local: bool = typer.Option(False,"--local")
 ):
+    if not password:
+        password = typer.prompt("Storage password",hide_input=True)
     if local:
-        if not password:
-            password = typer.prompt("Storage password",hide_input=True)
         keys = load_keys(password=password)
         my_id = keys["user_id"]
         my_ik_public = b64d(keys["dh_public"])
@@ -102,10 +99,11 @@ def verify(
             None,
             their_info["username"],
             user_id,
-            True
+            True,
+            password,
         )
         return
-    load_and_set_token()
+    load_and_set_token(password)
     try:
         data = fetch_safety_number(user_id)
         their_info = fetch_user_info(user_id)
@@ -115,7 +113,8 @@ def verify(
             data["their_fingerprint"],
             their_info["username"],
             user_id,
-            False
+            False,
+            password,
         )
     except FortrxAPIError as e:
         console.print(f"[red]❌ Failed:[/red]{e,detail}")

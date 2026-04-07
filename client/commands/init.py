@@ -23,7 +23,13 @@ def init(
     force: bool = typer.Option(False,"--force"),
     password: str = typer.Option(None,"--password","-p"),
 ):
-    if not load_and_set_token():
+    if not password:
+        password = typer.prompt(
+            "Storage password",
+            hide_input=True,
+            confirmation_prompt=True
+        )
+    if not load_and_set_token(password):
         console.print("[red]❌ Login First[/red]")
         raise typer.Exit(1)
     
@@ -32,12 +38,6 @@ def init(
         console.print("Use --force to regenerate")
         raise typer.Exit(1)
     
-    if not password:
-        password = typer.prompt(
-            "Storage password",
-            hide_input=True,
-            confirmation_prompt=True
-        )
     try:
         me = get_me()
         user_id = me["id"]
@@ -83,6 +83,7 @@ def init(
         save_keys(keys_to_save,password=password)
         upload_key_bundle(
             identity_key = b64(identity["dh_public"]),
+            signing_public = b64(identity["signing_public"]),
             signed_prekey = b64(signed_prekey["public"]),
             signed_prekey_signature= b64(signed_prekey["signature"]),
             prekey_id = 1,

@@ -24,3 +24,9 @@ def get_me():
     response = get("/auth/me")
     raise_for_status(response,context="get_me")
     return response.json()
+
+
+def get_user(user_id: int):
+    response = get(f"/auth/users/{user_id}")
+    raise_for_status(response, context="get_user")
+    return response.json()

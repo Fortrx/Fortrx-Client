@@ -179,6 +179,7 @@ def test_alice_uploads_keys(alice_client):
         "/keys/upload",
         json={
             "identity_key": b64e(keys["identity"]["dh_public"]),
+            "signing_public": b64e(keys["identity"]["signing_public"]),
             "signed_prekey": b64e(keys["signed_prekey"]["public"]),
             "signed_prekey_signature": b64e(keys["signed_prekey"]["signature"]),
             "prekey_id": 1,
@@ -199,6 +200,7 @@ def test_bob_uploads_keys(bob_client):
         "/keys/upload",
         json={
             "identity_key": b64e(keys["identity"]["dh_public"]),
+            "signing_public": b64e(keys["identity"]["signing_public"]),
             "signed_prekey": b64e(keys["signed_prekey"]["public"]),
             "signed_prekey_signature": b64e(keys["signed_prekey"]["signature"]),
             "prekey_id": 1,
@@ -222,6 +224,7 @@ def test_alice_fetches_bob_bundle(alice_client):
 
     # Verify bundle structure
     assert "identity_key" in data
+    assert "signing_public" in data
     assert "signed_prekey" in data
     assert "one_time_prekey" in data
 

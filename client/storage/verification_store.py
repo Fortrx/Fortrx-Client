@@ -1,24 +1,23 @@
-import json
-from pathlib import Path
-from datetime import datetime
+from client.config import settings
+from client.storage.db import (
+    is_verified as db_is_verified,
+    load_verifications as db_load_verifications,
+    save_verification as db_save_verification,
+)
 
-FILE = Path(".fortrx/verified.json")
-
-def load_verifications():
-    if not FILE.exists():
-        return {}
-    return json.loads(FILE.read_text())
+FILE = settings.VERIFIED_FILE
 
 
-def save_verification(user_id: int, safety_number: str):
-    data = load_verifications()
-    data[str(user_id)] = {
-        "safety_number": safety_number,
-        "verified_at": datetime.utcnow().isoformat()
-    }
-    FILE.write_text(json.dumps(data, indent=2))
+def load_verifications(password: str | None = None):
+    password = password or settings.STORAGE_PASSWORD
+    return db_load_verifications(password)
 
 
-def is_verified(user_id: int) -> bool:
-    data = load_verifications()
-    return str(user_id) in data
+def save_verification(user_id: int, safety_number: str, password: str | None = None):
+    password = password or settings.STORAGE_PASSWORD
+    db_save_verification(password, user_id, safety_number)
+
+
+def is_verified(user_id: int, password: str | None = None) -> bool:
+    password = password or settings.STORAGE_PASSWORD
+    return db_is_verified(password, user_id)

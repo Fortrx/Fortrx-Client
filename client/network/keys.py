@@ -2,6 +2,7 @@ from client.network.api import get,post,raise_for_status
 
 def upload_key_bundle(
     identity_key:str,
+    signing_public: str,
     signed_prekey: str,
     signed_prekey_signature: str,
     prekey_id:int,
@@ -11,6 +12,7 @@ def upload_key_bundle(
 ):
     body = {
             "identity_key": identity_key,
+            "signing_public": signing_public,
             "signed_prekey": signed_prekey,
             "signed_prekey_signature": signed_prekey_signature,
             "prekey_id": prekey_id,

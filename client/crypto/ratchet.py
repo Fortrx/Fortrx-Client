@@ -70,7 +70,7 @@ def init_ratchet_receiver(shared_secret:bytes,our_ratchet_private:bytes):
 
 def derive_message_key(chain_key:bytes):
     msg_key = hmac.new(chain_key,b"\x01",hashlib.sha256).digest()
-    next_chain = hmac.new(chain_key,b"x02",hashlib.sha256).digest()
+    next_chain = hmac.new(chain_key,b"\x02",hashlib.sha256).digest()
     return msg_key,next_chain
 
 def dh_ratchet_step(state:RatchetState,their_new_public:bytes):

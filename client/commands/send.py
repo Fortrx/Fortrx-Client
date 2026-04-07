@@ -14,9 +14,9 @@ def send_cmd(
     ttl:int=typer.Option(None,"--ttl"),
     password: str = typer.Option(None,"--password","-p")
 ):
-    load_and_set_token()
     if not password:
         password = typer.prompt("Storage Password",hide_input=True)
+    load_and_set_token(password)
     try:
         result = send(
             recipient_id=recipient_id,
@@ -32,5 +32,5 @@ def send_cmd(
         console.print(f"[red]❌ Send failed:[/red]{e.detail}")
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]❌ Crypto error:[/red]{e}")
+        console.print(f"[red]❌ Crypto error:[/red] {type(e).__name__}: {e}")
         raise typer.Exit(1)
