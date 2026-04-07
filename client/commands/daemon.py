@@ -1,9 +1,13 @@
-import os
-
 import typer
 from rich.console import Console
 
-from client.services.daemon import daemon_status, run_daemon, start_daemon, stop_daemon
+from client.services.daemon import (
+    consume_bootstrap_secret,
+    daemon_status,
+    run_daemon,
+    start_daemon,
+    stop_daemon,
+)
 
 
 app = typer.Typer()
@@ -14,7 +18,6 @@ console = Console()
 def daemon_start(
     password: str = typer.Option(None, "--password", "-p", help="Storage password"),
 ):
-    password = password or os.getenv("FORTRX_DAEMON_PASSWORD")
     if not password:
         password = typer.prompt("Storage password", hide_input=True)
     state = start_daemon(password)
@@ -26,8 +29,9 @@ def daemon_start(
 @app.command("run")
 def daemon_run(
     password: str = typer.Option(None, "--password", "-p", help="Storage password"),
+    password_file: str = typer.Option(None, "--password-file", hidden=True),
 ):
-    password = password or os.getenv("FORTRX_DAEMON_PASSWORD")
+    password = password or consume_bootstrap_secret(password_file)
     if not password:
         password = typer.prompt("Storage password", hide_input=True)
     run_daemon(password)

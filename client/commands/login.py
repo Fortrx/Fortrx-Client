@@ -2,6 +2,7 @@ import typer
 from rich.console import Console
 from client.network.auth import login as login_user,get_me
 from client.network import FortrxAPIError
+from client.storage.crypto import StorageError
 from client.storage.token_store import save_token
 from client.services.daemon import start_daemon
 
@@ -30,4 +31,7 @@ def login(
             console.print(f"[dim]  Daemon {state.get('status', 'starting')}[/dim]")
     except FortrxAPIError as e:
         console.print(f"[red]❌ Login failed:[/red] {e.detail}")
+        raise typer.Exit(1)
+    except StorageError as e:
+        console.print(f"[red]❌ Storage error:[/red] {e}")
         raise typer.Exit(1)

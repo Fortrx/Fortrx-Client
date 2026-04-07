@@ -1,8 +1,12 @@
 from client.network.api import FortrxAPIError, get, post, raise_for_status
 
 
-def heartbeat() -> dict:
-    response = post("/presence/heartbeat", json={})
+def heartbeat(session_id: str) -> dict:
+    response = post(
+        "/presence/heartbeat",
+        json={},
+        headers={"X-Client-Session": session_id},
+    )
     try:
         raise_for_status(response, context="presence_heartbeat")
     except FortrxAPIError as exc:

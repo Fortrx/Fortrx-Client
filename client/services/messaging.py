@@ -17,6 +17,7 @@ from client.crypto.sealed_sender import seal, unseal
 
 from client.network.keys import fetch_key_bundle
 from client.network.auth import get_me, get_user
+from client.network.api import FortrxAPIError
 from client.network.messages import send_message as api_send
 from client.network.messages import fetch_inbox, confirm_delivery
 from client.network.presence import fetch_presence_contacts
@@ -329,7 +330,11 @@ def receive_one_from_entry(entry: dict, storage_password: str):
             "status": "delivered",
         },
     )
-    confirm_delivery(entry["id"])
+    try:
+        confirm_delivery(entry["id"])
+    except FortrxAPIError as exc:
+        if exc.status_code != 404:
+            raise
 
     return {
         "sender_id": sender_id,
@@ -343,6 +348,11 @@ def sync_inbox(storage_password: str):
     results = []
     for entry in fetch_inbox():
         if message_exists(storage_password, entry["id"]):
+            try:
+                confirm_delivery(entry["id"])
+            except FortrxAPIError as exc:
+                if exc.status_code != 404:
+                    raise
             continue
         result = receive_one_from_entry(entry, storage_password=storage_password)
         if result:

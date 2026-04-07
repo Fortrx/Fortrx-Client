@@ -1,21 +1,44 @@
 import asyncio
+import contextlib
+import inspect
 import json
+
 import websockets
+
 from client.config import settings
 from client.network.api import get_token
-from client.storage.token_store import load_token
 
-async def connect(user_id:int, token:str=None):
-    if not token:
-        token = get_token() or load_token()
+
+_WS_HEADERS_KWARG = (
+    "additional_headers"
+    if "additional_headers" in inspect.signature(websockets.connect).parameters
+    else "extra_headers"
+)
+
+
+def _ws_url() -> str:
+    if settings.SERVER_URL.startswith("https://"):
+        return settings.SERVER_URL.replace("https://", "wss://", 1)
+    return settings.SERVER_URL.replace("http://", "ws://", 1)
+
+
+async def connect(user_id: int, token: str | None = None):
+    token = token or get_token()
     if not token:
         raise ConnectionError("No token found, Login first.")
-    uri = f"{settings.SERVER_URL.replace('http','ws')}/ws/{user_id}?token={token}"
-    return await websockets.connect(uri)
+    uri = f"{_ws_url()}/ws/{user_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+    kwargs = {
+        _WS_HEADERS_KWARG: headers,
+        "open_timeout": settings.REQUEST_TIMEOUT_SECONDS,
+        "close_timeout": settings.REQUEST_TIMEOUT_SECONDS,
+        "ping_interval": None,
+    }
+    return await websockets.connect(uri, **kwargs)
 
-async def listen(user_id:int, on_message:callable, token:str=None):
-    if not token:
-        token = get_token() or load_token()
+
+async def listen(user_id: int, on_message: callable, token: str | None = None):
+    token = token or get_token()
     retry_delay = 2
     while True:
         try:
@@ -33,19 +56,20 @@ async def listen(user_id:int, on_message:callable, token:str=None):
                         await on_message(data)
                 finally:
                     keepalive_task.cancel()
-        except Exception as exc:
-            exc_name = type(exc).__name__
-            if exc_name not in {"ConnectionClosedOK", "ConnectionClosedError"}:
-                pass
-        finally:
+                    with contextlib.suppress(asyncio.CancelledError, Exception):
+                        await keepalive_task
+        except asyncio.CancelledError:
+            raise
+        except Exception:
             pass
         await asyncio.sleep(retry_delay)
-        retry_delay = min(retry_delay*2,10)
+        retry_delay = min(retry_delay * 2, 10)
 
-async def keepalive(ws,interval: int= 30):
+
+async def keepalive(ws, interval: int = 30):
     while True:
         await asyncio.sleep(interval)
         try:
             await ws.send("ping")
-        except:
+        except Exception:
             break

@@ -1,7 +1,7 @@
 import json
 import os
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,6 +19,9 @@ except ImportError:
         sqlcipher_driver = None
 
 
+SQLITE_HEADER = b"SQLite format 3\x00"
+
+
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -29,6 +32,30 @@ def _db_path() -> Path:
 
 def _ensure_parent():
     _db_path().parent.mkdir(parents=True, exist_ok=True)
+
+
+def _dict_row(cursor, row):
+    return {column[0]: row[idx] for idx, column in enumerate(cursor.description)}
+
+
+def _db_header() -> bytes:
+    path = _db_path()
+    if not path.exists():
+        return b""
+    with path.open("rb") as handle:
+        return handle.read(16)
+
+
+def _storage_open_error(exc: Exception) -> StorageError:
+    header = _db_header()
+    if _using_sqlcipher() and header == SQLITE_HEADER:
+        return StorageError(
+            "Local storage was created without SQLCipher. Move or migrate "
+            f"'{_db_path()}' before using the sqlcipher3-backed client."
+        )
+    if _using_sqlcipher():
+        return StorageError("Wrong storage password or incompatible encrypted database.")
+    return StorageError("Could not open local storage.")
 
 
 def _get_driver():
@@ -42,17 +69,30 @@ def _using_sqlcipher() -> bool:
 def _connect(password: str | None):
     if not password:
         raise StorageError("No storage password set")
+    if not _using_sqlcipher() and not settings.ALLOW_INSECURE_STORAGE:
+        raise StorageError(
+            "SQLCipher support is required. Install sqlcipher3-binary or set "
+            "ALLOW_INSECURE_STORAGE=true only for local development."
+        )
 
     _ensure_parent()
     driver = _get_driver()
-    conn = driver.connect(str(_db_path()))
-    conn.row_factory = sqlite3.Row
+    conn = None
+    try:
+        conn = driver.connect(str(_db_path()))
+        conn.row_factory = _dict_row
 
-    if _using_sqlcipher():
-        escaped_password = password.replace("'", "''")
-        conn.execute(f"PRAGMA key = '{escaped_password}'")
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+        if _using_sqlcipher():
+            escaped_password = password.replace("'", "''")
+            conn.execute(f"PRAGMA key = '{escaped_password}'")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("SELECT count(*) AS count FROM sqlite_master").fetchone()
+        return conn
+    except Exception as exc:
+        with suppress(Exception):
+            if conn is not None:
+                conn.close()
+        raise _storage_open_error(exc) from exc
 
 
 def _initialize(conn):
@@ -257,11 +297,13 @@ def _migrate_legacy_files(conn, password: str):
     if migrated:
         return
 
+    cleanup_paths: list[Path] = []
     token_path = Path(settings.TOKEN_FILE)
     if token_path.exists():
         token = token_path.read_text().strip()
         if token:
             save_token(password, token, conn=conn)
+            cleanup_paths.append(token_path)
 
     key_rows = _legacy_candidates("keys_*.enc")
     legacy_key_file = Path(settings.KEYS_FILE)
@@ -278,6 +320,7 @@ def _migrate_legacy_files(conn, password: str):
             continue
         save_keys(password, payload, conn=conn)
         seen_key_users.add(user_id)
+        cleanup_paths.append(path)
 
     session_path = Path(settings.SESSION_FILE)
     if session_path.exists():
@@ -287,6 +330,7 @@ def _migrate_legacy_files(conn, password: str):
             sessions = {}
         for contact_id, state in sessions.items():
             save_session_blob(password, int(contact_id), state, conn=conn)
+        cleanup_paths.append(session_path)
 
     verified_path = Path(settings.VERIFIED_FILE)
     if verified_path.exists():
@@ -306,12 +350,18 @@ def _migrate_legacy_files(conn, password: str):
                     entry.get("verified_at", _utcnow()),
                 ),
             )
+        cleanup_paths.append(verified_path)
 
     conn.execute(
         "INSERT OR REPLACE INTO metadata(key, value) VALUES('legacy_migrated', ?)",
         (_utcnow(),),
     )
     conn.commit()
+    for path in cleanup_paths:
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 @contextmanager
@@ -396,9 +446,16 @@ def load_keys(password: str, user_id: int | None = None):
                 (int(user_id),),
             ).fetchone()
         if row is None:
-            row = conn.execute(
-                "SELECT payload FROM private_keys ORDER BY user_id LIMIT 1"
-            ).fetchone()
+            rows = conn.execute(
+                "SELECT user_id, payload FROM private_keys ORDER BY user_id"
+            ).fetchall()
+            if not rows:
+                raise StorageError("No keys found. Run 'fortrx init' first.")
+            if len(rows) > 1:
+                raise StorageError(
+                    "Multiple local identities found. Log in before unlocking keys."
+                )
+            row = rows[0]
         if row is None:
             raise StorageError("No keys found. Run 'fortrx init' first.")
         return _from_json_blob(row["payload"], password)

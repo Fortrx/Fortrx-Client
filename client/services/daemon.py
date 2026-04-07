@@ -4,10 +4,11 @@ import os
 import signal
 import subprocess
 import sys
-import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from client.config import settings
 from client.network.auth import get_me
 from client.network.api import get_token
 from client.network.ws import listen
@@ -35,18 +36,58 @@ def _error_payload(stage: str, exc: Exception, **extra):
         stage=stage,
         error_type=type(exc).__name__,
         error=str(exc),
-        traceback=traceback.format_exc(),
         **extra,
     )
 
 
-async def _heartbeat_loop(storage_password: str):
+def _bootstrap_dir() -> Path:
+    return Path(settings.LOCAL_STORAGE_PATH) / "runtime"
+
+
+def _cleanup_stale_bootstrap_secrets(max_age_seconds: int = 300):
+    bootstrap_dir = _bootstrap_dir()
+    if not bootstrap_dir.exists():
+        return
+    cutoff = datetime.now(timezone.utc).timestamp() - max_age_seconds
+    for path in bootstrap_dir.glob("daemon-*.secret"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+        except Exception:
+            continue
+
+
+def _write_bootstrap_secret(storage_password: str) -> Path:
+    _cleanup_stale_bootstrap_secrets()
+    bootstrap_dir = _bootstrap_dir()
+    bootstrap_dir.mkdir(parents=True, exist_ok=True)
+    path = bootstrap_dir / f"daemon-{uuid.uuid4().hex}.secret"
+    path.write_text(storage_password, encoding="utf-8")
+    with contextlib.suppress(Exception):
+        os.chmod(path, 0o600)
+    return path
+
+
+def consume_bootstrap_secret(path_value: str | None) -> str | None:
+    if not path_value:
+        return None
+    path = Path(path_value)
+    if not path.exists():
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            path.unlink()
+
+
+async def _heartbeat_loop(storage_password: str, session_id: str):
     from client.network.presence import heartbeat
 
     while True:
         try:
-            heartbeat()
-            refresh_presence_cache(storage_password)
+            await asyncio.to_thread(heartbeat, session_id)
+            await asyncio.to_thread(refresh_presence_cache, storage_password)
             _status_payload("running", last_heartbeat_at=_utcnow())
         except Exception as exc:
             _error_payload("heartbeat", exc)
@@ -57,34 +98,36 @@ async def _handle_event(event: dict, storage_password: str):
     try:
         event_type = event.get("type")
         if event_type == "message_available":
-            sync_inbox(storage_password)
+            await asyncio.to_thread(sync_inbox, storage_password)
         elif event_type == "presence_changed":
-            upsert_contact(
+            await asyncio.to_thread(
+                upsert_contact,
                 storage_password,
                 int(event["user_id"]),
                 event.get("username"),
                 bool(event.get("is_online")),
             )
         elif event_type == "sync_hint":
-            sync_inbox(storage_password)
+            await asyncio.to_thread(sync_inbox, storage_password)
     except Exception as exc:
         _error_payload("event", exc, event=event)
 
 
 async def run_daemon_async(storage_password: str):
     try:
-        if not load_and_set_token(storage_password):
+        if not await asyncio.to_thread(load_and_set_token, storage_password):
             raise RuntimeError("No saved token found. Run 'fortrx login' first.")
 
-        me = get_me()
+        me = await asyncio.to_thread(get_me)
         token = get_token()
         if not token:
             raise RuntimeError("No token available after unlock. Log in again.")
+        session_id = f"daemon:{uuid.uuid4().hex}"
         _status_payload("starting", pid=os.getpid(), user_id=me["id"], username=me["username"])
-        sync_inbox(storage_password)
-        refresh_presence_cache(storage_password)
+        await asyncio.to_thread(sync_inbox, storage_password)
+        await asyncio.to_thread(refresh_presence_cache, storage_password)
 
-        heartbeat_task = asyncio.create_task(_heartbeat_loop(storage_password))
+        heartbeat_task = asyncio.create_task(_heartbeat_loop(storage_password, session_id))
         try:
             _status_payload("running", pid=os.getpid(), user_id=me["id"], username=me["username"])
             await listen(
@@ -115,35 +158,40 @@ def start_daemon(storage_password: str):
         return state
 
     env = os.environ.copy()
-    env["FORTRX_DAEMON_PASSWORD"] = storage_password
-    cmd = [sys.executable, "run.py", "daemon", "run"]
+    bootstrap_path = _write_bootstrap_secret(storage_password)
+    cmd = [sys.executable, "run.py", "daemon", "run", "--password-file", str(bootstrap_path)]
 
-    if os.name == "nt":
-        creationflags = (
-            getattr(subprocess, "DETACHED_PROCESS", 0)
-            | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        )
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(Path(__file__).resolve().parents[2]),
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=creationflags,
-            close_fds=True,
-        )
-    else:
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(Path(__file__).resolve().parents[2]),
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-            close_fds=True,
-        )
+    try:
+        if os.name == "nt":
+            creationflags = (
+                getattr(subprocess, "DETACHED_PROCESS", 0)
+                | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            )
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(Path(__file__).resolve().parents[2]),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creationflags,
+                close_fds=True,
+            )
+        else:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(Path(__file__).resolve().parents[2]),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+    except Exception:
+        with contextlib.suppress(FileNotFoundError):
+            bootstrap_path.unlink()
+        raise
 
     _status_payload("starting", pid=proc.pid)
     return {"is_running": True, "pid": proc.pid, "status": "starting"}

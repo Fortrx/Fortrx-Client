@@ -15,9 +15,12 @@ def _headers():
         return {"Authorization":f"Bearer {_token}"}
     return {}
 
+def _timeout():
+    return httpx.Timeout(settings.REQUEST_TIMEOUT_SECONDS)
+
 def get(endpoint: str, **kwargs):
     url = settings.SERVER_URL + endpoint
-    response = httpx.get(url,headers = _headers(),**kwargs)
+    response = httpx.get(url,headers = _headers(), timeout=_timeout(), **kwargs)
     return response
 
 def post(endpoint:str,json:dict=None,data:dict=None,**kwargs):
@@ -27,12 +30,13 @@ def post(endpoint:str,json:dict=None,data:dict=None,**kwargs):
         json=json,
         data=data,
         headers=_headers() | kwargs.pop("headers",{}),
+        timeout=_timeout(),
         **kwargs)
     return response
 
 def delete(endpoint:str,**kwargs):
     url = settings.SERVER_URL+endpoint
-    response = httpx.delete(url,headers=_headers(),**kwargs)
+    response = httpx.delete(url,headers=_headers(), timeout=_timeout(), **kwargs)
     return response
 
 def raise_for_status(response:httpx.Response,context:str=""):

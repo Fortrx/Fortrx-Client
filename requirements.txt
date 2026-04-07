@@ -5,6 +5,6 @@ pydantic-settings
 pytest
 pytest-asyncio
 rich
-sqlcipher3-binary
+sqlcipher3
 typer
 websockets
