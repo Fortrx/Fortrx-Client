@@ -83,8 +83,10 @@ def _connect(password: str | None):
         conn.row_factory = _dict_row
 
         if _using_sqlcipher():
-            escaped_password = password.replace("'", "''")
-            conn.execute(f"PRAGMA key = '{escaped_password}'")
+            # Avoid embedding raw user input in SQL text. Use a hex blob literal
+            # so only [0-9A-F] reaches the statement payload.
+            key_hex = password.encode("utf-8").hex().upper()
+            conn.execute(f"PRAGMA key = \"x'{key_hex}'\"")
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("SELECT count(*) AS count FROM sqlite_master").fetchone()
         return conn
