@@ -5,7 +5,7 @@ from client.storage.db import delete_token as db_delete_token
 from client.storage.db import load_token as db_load_token
 from client.storage.db import save_token as db_save_token
 
-def save_token(token:str, password: str | None = None):
+def save_token(token: str, password: str | None = None):
     password = password or settings.STORAGE_PASSWORD
     if not password:
         raise StorageError("A storage password is required to save the token securely.")
@@ -15,10 +15,7 @@ def load_token(password: str | None = None):
     password = password or settings.STORAGE_PASSWORD
     if not password:
         return None
-    token = db_load_token(password)
-    if token:
-        return token
-    return None
+    return db_load_token(password)
 
 def delete_token(password: str | None = None):
     password = password or settings.STORAGE_PASSWORD
