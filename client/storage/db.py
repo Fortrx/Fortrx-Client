@@ -71,7 +71,7 @@ def _connect(password: str | None):
         raise StorageError("No storage password set")
     if not _using_sqlcipher() and not settings.ALLOW_INSECURE_STORAGE:
         raise StorageError(
-            "SQLCipher support is required. Install sqlcipher3-binary or set "
+            "SQLCipher support is required. Install sqlcipher3 or set "
             "ALLOW_INSECURE_STORAGE=true only for local development."
         )
 
