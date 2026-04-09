@@ -15,10 +15,7 @@ def load_token(password: str | None = None):
     password = password or settings.STORAGE_PASSWORD
     if not password:
         return None
-    token = db_load_token(password)
-    if token:
-        return token
-    return None
+    return db_load_token(password)
 
 def delete_token(password: str | None = None):
     password = password or settings.STORAGE_PASSWORD
