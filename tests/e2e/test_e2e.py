@@ -3,7 +3,6 @@ End-to-End Integration Test Suite for Fortress Messenger
 Tests all 9 core properties of the system in a continuous flow.
 """
 
-import pytest
 import asyncio
 import base64
 import json
