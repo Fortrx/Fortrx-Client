@@ -117,5 +117,5 @@ def verify(
             password,
         )
     except FortrxAPIError as e:
-        console.print(f"[red]❌ Failed:[/red]{e,detail}")
+        console.print(f"[red]❌ Failed:[/red]{e.detail}")
         raise typer.Exit(1)
