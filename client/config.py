@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from pydantic import field_validator
@@ -5,16 +6,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+ENV_FILE_OVERRIDE = os.getenv("FORTRX_ENV_FILE")
+DEFAULT_ENV_FILE = Path(ENV_FILE_OVERRIDE) if ENV_FILE_OVERRIDE else (
+    ROOT_DIR / ".env.local" if (ROOT_DIR / ".env.local").exists() else ROOT_DIR / ".env"
+)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(ROOT_DIR / ".env"),
+        env_file=str(DEFAULT_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    SERVER_URL: str = "http://localhost:8000"
+    SERVER_URL: str = "https://fortrx-server.duckdns.org"
     LOCAL_STORAGE_PATH: str = ".fortrx"
     STORAGE_PASSWORD: str = ""
     REQUEST_TIMEOUT_SECONDS: float = 10.0

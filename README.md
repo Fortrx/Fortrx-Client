@@ -24,6 +24,18 @@ This client is built around:
 - Redis enabled on the server for live delivery and presence
 - SQLCipher Python bindings are preferred for encrypted local storage
 
+## Server Selection
+
+Production defaults to `https://fortrx-server.duckdns.org`.
+
+For local development, create `.env.local` with:
+
+```powershell
+SERVER_URL=http://localhost:8000
+```
+
+You can also point the client at a different stack by setting `FORTRX_ENV_FILE` to an alternate env file path before running commands.
+
 Install dependencies:
 
 ```powershell

@@ -5,6 +5,7 @@ Tests all 9 core properties of the system in a continuous flow.
 
 import asyncio
 import base64
+import inspect
 import json
 import time
 from typing import Dict, Any
@@ -40,6 +41,27 @@ def b64e(data: bytes) -> str:
 def b64d(data: str) -> bytes:
     """Base64 decode string to bytes."""
     return base64.b64decode(data)
+
+
+def _ws_url(base_url: str, user_id: int) -> str:
+    if base_url.startswith("https://"):
+        scheme = "wss://"
+        host = base_url[len("https://") :]
+    else:
+        scheme = "ws://"
+        host = base_url[len("http://") :]
+    return f"{scheme}{host}/ws/{user_id}"
+
+
+def _ws_connect_headers(token: str) -> dict:
+    import websockets
+
+    header_name = (
+        "additional_headers"
+        if "additional_headers" in inspect.signature(websockets.connect).parameters
+        else "extra_headers"
+    )
+    return {header_name: {"Authorization": f"Bearer {token}"}}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -658,7 +680,7 @@ def test_safety_numbers_local_computation():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_websocket_push(alice_client, bob_client):
+def test_websocket_push(alice_client, bob_client, server_url):
     """Bob receives real-time push notification via WebSocket."""
     import websockets
 
@@ -667,13 +689,13 @@ def test_websocket_push(alice_client, bob_client):
     async def run():
         bob_token = STATE["bob_token"]
         bob_id = STATE["bob_id"]
-        uri = f"ws://localhost:8000/ws/{bob_id}?token={bob_token}"
+        uri = _ws_url(server_url, bob_id)
+        connect_kwargs = _ws_connect_headers(bob_token)
 
-        async with websockets.connect(uri) as ws:
-            # Wait for connection confirmation
+        async with websockets.connect(uri, **connect_kwargs) as ws:
             msg = await asyncio.wait_for(ws.recv(), timeout=5)
             data = json.loads(msg)
-            assert data["type"] == "connected"
+            assert data["type"] == "sync_hint"
 
             # Alice sends message in background
             async def send_from_alice():
@@ -694,7 +716,7 @@ def test_websocket_push(alice_client, bob_client):
             push = await asyncio.wait_for(ws.recv(), timeout=10)
             push_data = json.loads(push)
 
-            assert push_data["type"] == "new_message"
+            assert push_data["type"] == "message_available"
             assert push_data["message_number"] == 99
             received.append(push_data)
 
@@ -703,15 +725,16 @@ def test_websocket_push(alice_client, bob_client):
     print("\n✅ WebSocket push received in real-time")
 
 
-def test_websocket_auth_rejected():
+def test_websocket_auth_rejected(server_url):
     """WebSocket connection with invalid token is rejected."""
     import websockets
 
     async def run():
-        uri = f"ws://localhost:8000/ws/{STATE['bob_id']}?token=invalid.token.here"
+        uri = _ws_url(server_url, STATE["bob_id"])
+        connect_kwargs = _ws_connect_headers("invalid.token.here")
 
         try:
-            async with websockets.connect(uri) as ws:
+            async with websockets.connect(uri, **connect_kwargs) as ws:
                 # Try to receive something → should fail
                 await ws.recv()
         except Exception:

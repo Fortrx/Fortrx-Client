@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .fortrx/
+.env.local
 
 # Testing
 .pytest_cache/

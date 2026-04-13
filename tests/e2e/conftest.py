@@ -6,12 +6,10 @@ import pytest
 import asyncio
 import httpx
 import os
-import shutil
 import time
-from pathlib import Path
 
 
-SERVER_URL = "http://localhost:8000"
+SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8000").rstrip("/")
 
 
 @pytest.fixture(scope="session")
@@ -49,7 +47,7 @@ def storage_password():
 @pytest.fixture(scope="session")
 def alice_client(server_url):
     """HTTP client for Alice with server base URL."""
-    client = httpx.Client(base_url=SERVER_URL, timeout=30)
+    client = httpx.Client(base_url=server_url, timeout=30)
     yield client
     client.close()
 
@@ -57,7 +55,7 @@ def alice_client(server_url):
 @pytest.fixture(scope="session")
 def bob_client(server_url):
     """HTTP client for Bob with server base URL."""
-    client = httpx.Client(base_url=SERVER_URL, timeout=30)
+    client = httpx.Client(base_url=server_url, timeout=30)
     yield client
     client.close()
 

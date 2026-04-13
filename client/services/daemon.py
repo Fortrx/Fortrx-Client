@@ -16,10 +16,6 @@ from client.services.messaging import refresh_presence_cache, sync_inbox
 from client.storage.db import load_daemon_state, save_daemon_state, upsert_contact
 from client.storage.token_store import load_and_set_token
 
-
-HEARTBEAT_INTERVAL_SECONDS = 20
-
-
 def _utcnow():
     return datetime.now(timezone.utc).isoformat()
 
@@ -81,19 +77,6 @@ def consume_bootstrap_secret(path_value: str | None) -> str | None:
             path.unlink()
 
 
-async def _heartbeat_loop(storage_password: str, session_id: str):
-    from client.network.presence import heartbeat
-
-    while True:
-        try:
-            await asyncio.to_thread(heartbeat, session_id)
-            await asyncio.to_thread(refresh_presence_cache, storage_password)
-            _status_payload("running", last_heartbeat_at=_utcnow())
-        except Exception as exc:
-            _error_payload("heartbeat", exc)
-        await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
-
-
 async def _handle_event(event: dict, storage_password: str):
     try:
         event_type = event.get("type")
@@ -109,6 +92,9 @@ async def _handle_event(event: dict, storage_password: str):
             )
         elif event_type == "sync_hint":
             await asyncio.to_thread(sync_inbox, storage_password)
+            if event.get("refresh_presence"):
+                await asyncio.to_thread(refresh_presence_cache, storage_password)
+            _status_payload("running", last_sync_at=_utcnow(), sync_reason=event.get("reason"))
     except Exception as exc:
         _error_payload("event", exc, event=event)
 
@@ -122,23 +108,15 @@ async def run_daemon_async(storage_password: str):
         token = get_token()
         if not token:
             raise RuntimeError("No token available after unlock. Log in again.")
-        session_id = f"daemon:{uuid.uuid4().hex}"
         _status_payload("starting", pid=os.getpid(), user_id=me["id"], username=me["username"])
         await asyncio.to_thread(sync_inbox, storage_password)
         await asyncio.to_thread(refresh_presence_cache, storage_password)
-
-        heartbeat_task = asyncio.create_task(_heartbeat_loop(storage_password, session_id))
-        try:
-            _status_payload("running", pid=os.getpid(), user_id=me["id"], username=me["username"])
-            await listen(
-                me["id"],
-                lambda event: _handle_event(event, storage_password),
-                token=token,
-            )
-        finally:
-            heartbeat_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await heartbeat_task
+        _status_payload("running", pid=os.getpid(), user_id=me["id"], username=me["username"])
+        await listen(
+            me["id"],
+            lambda event: _handle_event(event, storage_password),
+            token=token,
+        )
     except Exception as exc:
         _error_payload("startup", exc, pid=os.getpid())
         raise
