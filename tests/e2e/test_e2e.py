@@ -26,6 +26,7 @@ from client.crypto.sealed_sender import seal, unseal
 from client.crypto.fingerprint import (
     compute_key_fingerprint,
     fingerprint_to_string,
+    generate_safety_number,
 )
 
 
@@ -404,6 +405,7 @@ def test_seal_unseal_round_trip():
 
     sealed = seal(
         sender_id=STATE["alice_id"],
+        sender_ik_private=STATE["alice_keys"]["identity"]["dh_private"],
         sender_ik_public=STATE["alice_keys"]["identity"]["dh_public"],
         recipient_ik_public=b64d(STATE["bob_bundle"]["identity_key"]),
         ciphertext=ciphertext,
@@ -575,6 +577,7 @@ def test_disappearing_message(alice_client, bob_client):
 
     sealed = seal(
         sender_id=STATE["alice_id"],
+        sender_ik_private=STATE["alice_keys"]["identity"]["dh_private"],
         sender_ik_public=STATE["alice_keys"]["identity"]["dh_public"],
         recipient_ik_public=b64d(STATE["bob_bundle"]["identity_key"]),
         ciphertext=ciphertext,
@@ -648,29 +651,18 @@ def test_safety_numbers_local_computation():
     alice_keys = STATE["alice_keys"]
     bob_keys = STATE["bob_keys"]
 
-    # Generate locally using fingerprint functions
-    alice_fp = compute_key_fingerprint(
-        alice_keys["identity"]["dh_public"],
+    local_result = generate_safety_number(
         STATE["alice_id"],
-    )
-    bob_fp = compute_key_fingerprint(
-        bob_keys["identity"]["dh_public"],
+        alice_keys["identity"]["dh_public"],
         STATE["bob_id"],
+        bob_keys["identity"]["dh_public"],
     )
-
-    # Combine in deterministic order
-    if STATE["alice_id"] < STATE["bob_id"]:
-        combined = alice_fp + bob_fp
-    else:
-        combined = bob_fp + alice_fp
-
-    local_safety = fingerprint_to_string(combined[:30])
 
     # Should match what server computed
     server_safety = STATE["safety_number"]
 
-    assert local_safety == server_safety
-    print(f"✅ Local computation verified: {local_safety}")
+    assert local_result["safety_number"] == server_safety
+    print(f"✅ Local computation verified: {local_result['safety_number']}")
 
 
 

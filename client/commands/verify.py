@@ -45,20 +45,20 @@ def _display_safety_number(
         console.print(f"  [cyan]{your_fp}[/cyan]")
         console.print("[dim]  Their fingerprint half:[/dim]")
         console.print(f"  [cyan]{their_fp}[/cyan]")
-        console.print()
+    console.print()
 
     if computed_locally:
-        console.print("[dim]  ✓ Computed locally[/dim]")
+        console.print("[dim]  Computed locally[/dim]")
     else:
-        console.print("[dim]  ℹ Server-assisted[/dim]")
+        console.print("[dim]  Server-assisted[/dim]")
         console.print("[dim]  Use --local for max security[/dim]")
 
     console.print()
 
     console.print(Panel(
         "[yellow]Compare this number with your contact.[/yellow]\n\n"
-        "Match → safe\n"
-        "Mismatch → MITM",
+        "Match -> safe\n"
+        "Mismatch -> MITM",
         border_style="dim"
     ))
 
@@ -66,9 +66,9 @@ def _display_safety_number(
 
     if verified:
         save_verification(their_id, safety_number, password=storage_password)
-        console.print(f"[green]✓ Verified {their_username}[/green]")
+        console.print(f"[green]Verified {their_username}[/green]")
     else:
-        console.print("[yellow]⚠ Not verified[/yellow]")
+        console.print("[yellow]Not verified[/yellow]")
     
 @app.command()
 def verify(
@@ -78,6 +78,7 @@ def verify(
 ):
     if not password:
         password = typer.prompt("Storage password",hide_input=True)
+    load_and_set_token(password)
     if local:
         keys = load_keys(password=password)
         my_id = keys["user_id"]
@@ -86,7 +87,7 @@ def verify(
         from client.network.keys import fetch_key_bundle
         bundle = fetch_key_bundle(user_id)
         their_ik_public = b64d(bundle["identity_key"])
-        safety_number = generate_safety_number(
+        local_result = generate_safety_number(
             local_id=my_id,
             local_ik_public=my_ik_public,
             remote_id=user_id,
@@ -94,16 +95,15 @@ def verify(
         )
         their_info = fetch_user_info(user_id)
         _display_safety_number(
-            safety_number,
-            None,
-            None,
+            local_result["safety_number"],
+            local_result["your_fingerprint"],
+            local_result["their_fingerprint"],
             their_info["username"],
             user_id,
             True,
             password,
         )
         return
-    load_and_set_token(password)
     try:
         data = fetch_safety_number(user_id)
         their_info = fetch_user_info(user_id)
