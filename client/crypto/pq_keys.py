@@ -20,7 +20,7 @@ def generate_kyber_keypair():
     public_key,private_key = generate_keypair()
 
     assert len(public_key)> 1000, "unexpected public key size"
-    assert len(private_key) > 2000, "unexpected privare key size"
+    assert len(private_key) > 2000, "unexpected private key size"
     
     return {
         "public": public_key,
