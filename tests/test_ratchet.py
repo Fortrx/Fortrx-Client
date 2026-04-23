@@ -2,7 +2,6 @@ import os
 from client.crypto.ratchet import (
     RatchetState, derive_message_key, ratchet_encrypt, ratchet_decrypt
 )
-from client.services.messaging import b64d, b64e
 
 
 def make_state_with_chain(chain_key: bytes, dh_pub: bytes = b"p"*32):

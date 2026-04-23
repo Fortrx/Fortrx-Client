@@ -38,6 +38,11 @@ def test_seal_unseal_roundtrip():
 
     # generate sender ik public
     sender_priv = X25519PrivateKey.generate()
+    sender_priv_bytes = sender_priv.private_bytes(
+        encoding=Encoding.Raw,
+        format=PrivateFormat.Raw,
+        encryption_algorithm=NoEncryption(),
+    )
     sender_pub_bytes = sender_priv.public_key().public_bytes(encoding=Encoding.Raw, format=PublicFormat.Raw)
 
     header = {"meta": b"data"}
@@ -45,6 +50,7 @@ def test_seal_unseal_roundtrip():
 
     sealed = sealed_sender.seal(
         sender_id=99,
+        sender_ik_private=sender_priv_bytes,
         sender_ik_public=sender_pub_bytes,
         recipient_ik_public=recipient_pub_bytes,
         ciphertext=ciphertext,

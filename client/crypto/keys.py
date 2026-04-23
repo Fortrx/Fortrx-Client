@@ -6,6 +6,7 @@ from client.crypto.pq_keys import (
     generate_kyber_keypair,
     sign_kyber_prekey as _sign_kyber_prekey
 )
+from client.crypto.protocol_kdf import encode_curve_public_key
 
 def generate_identity_keypair():
     dh_private = X25519PrivateKey.generate()
@@ -27,7 +28,7 @@ def generate_signed_prekey(signing_private_key_bytes:bytes):
     
     public_bytes = prekey_public.public_bytes(encoding=Encoding.Raw,format=PublicFormat.Raw)
     
-    signature = signing_private.sign(public_bytes)
+    signature = signing_private.sign(encode_curve_public_key(public_bytes))
     
     return {
         "private": prekey_private.private_bytes(encoding=Encoding.Raw,format=PrivateFormat.Raw,encryption_algorithm=NoEncryption()),
@@ -41,12 +42,18 @@ def verify_signed_prekey(
     signed_prekey_public_bytes: bytes,
     signature: bytes
 ):
-    try:
-        signing_public = Ed25519PublicKey.from_public_bytes(signing_public_key_bytes)
-        signing_public.verify(signature, signed_prekey_public_bytes)
-        return True
-    except Exception:
-        return False
+    signing_public = Ed25519PublicKey.from_public_bytes(signing_public_key_bytes)
+    messages = (
+        encode_curve_public_key(signed_prekey_public_bytes),
+        signed_prekey_public_bytes,
+    )
+    for message in messages:
+        try:
+            signing_public.verify(signature, message)
+            return True
+        except Exception:
+            continue
+    return False
 
 def generate_one_time_prekeys(count:int = 10):
     keys = []

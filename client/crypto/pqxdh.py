@@ -1,8 +1,7 @@
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey,X25519PublicKey
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import Encoding,PublicFormat,PrivateFormat,NoEncryption
-from cryptography.hazmat.primitives import hashes
 from client.crypto.pq_keys import kyber_decaps,kyber_encaps
+from client.crypto.protocol_kdf import PQXDH_INFO, derive_x3dh_key_material
 
 def _load_x22519_private(raw:bytes):
     return X25519PrivateKey.from_private_bytes(raw)
@@ -16,12 +15,9 @@ def _dh(private_bytes: bytes,public_bytes: bytes):
     return priv.exchange(pub)
 
 def _hkdf_derive(input_key_material: bytes, length: int = 32):
-    return HKDF(
-        algorithm=hashes.SHA256(),
-        length=length,
-        salt=b"\x00"*32,
-        info=b"Fortrx PQXDH"
-    ).derive(input_key_material)
+    if length != 32:
+        raise ValueError("PQXDH shared secrets must be 32 bytes")
+    return derive_x3dh_key_material(input_key_material, info=PQXDH_INFO)
 
 def _generate_ephemeral():
     priv = X25519PrivateKey.generate()

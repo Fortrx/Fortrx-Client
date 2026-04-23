@@ -1,15 +1,9 @@
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.serialization import Encoding,PublicFormat
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from client.crypto.protocol_kdf import X3DH_INFO, derive_x3dh_key_material
 
 def _hkdf_derive(input_bytes:bytes):
-    return HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=b"\x00"*32,
-        info=b"Fortrx X3DH"
-    ).derive(input_bytes)
+    return derive_x3dh_key_material(input_bytes, info=X3DH_INFO)
     
 def x3dh_sender(
     ik_a_private: bytes,

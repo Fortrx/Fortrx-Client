@@ -14,6 +14,7 @@ from client.crypto.ratchet import (
 )
 
 from client.crypto.sealed_sender import seal, unseal
+from client.crypto.protocol_kdf import encode_identity_associated_data
 
 from client.network.keys import fetch_key_bundle
 from client.network.auth import get_me, get_user
@@ -67,6 +68,46 @@ def _find_otpk_private_from_header(keys: dict, x3dh_data: dict):
         if kp.get("public") == otpk_public_b64:
             return b64d(kp["private"])
     return None
+
+
+def _message_associated_data(sender_ik_public: bytes, recipient_ik_public: bytes) -> bytes:
+    return encode_identity_associated_data(sender_ik_public, recipient_ik_public)
+
+
+def _bootstrap_receiver_state(keys: dict, sender_ik: bytes, header: dict):
+    x3dh_data = header.get("x3dh", {})
+    if "ek_public" not in x3dh_data:
+        raise ValueError("missing x3dh bootstrap data")
+
+    my_ik_private = b64d(keys["dh_private"])
+    my_spk_private = b64d(keys["signed_prekey_private"])
+    otpk_private = _find_otpk_private_from_header(keys, x3dh_data)
+
+    if x3dh_data.get("is_pqxdh") and x3dh_data.get("kyber_ciphertext"):
+        shared_secret = pqxdh_receiver(
+            ik_b_private=my_ik_private,
+            spk_b_private=my_spk_private,
+            kyber_b_private=b64d(keys["kyber_prekey_private"]),
+            ik_a_public=sender_ik,
+            ek_a_public=b64d(x3dh_data["ek_public"]),
+            kyber_ciphertext=b64d(x3dh_data["kyber_ciphertext"]),
+            opk_b_private=otpk_private
+        )
+    else:
+        shared_secret = x3dh_receiver(
+            ik_b_private=my_ik_private,
+            spk_b_private=my_spk_private,
+            ik_a_public=sender_ik,
+            ek_a_public=b64d(x3dh_data["ek_public"]),
+            opk_b_private=otpk_private
+        )
+
+    state = init_ratchet_receiver(
+        shared_secret=shared_secret,
+        our_ratchet_private=my_spk_private
+    )
+    state.recipient_ik_public = sender_ik
+    return state
 
 
 # ────────────────────────────────────────────────
@@ -186,39 +227,48 @@ def send(recipient_id: int, plaintext: str, storage_password: str, ttl_seconds=N
         recipient_ik = state.recipient_ik_public
 
     if not is_verified(recipient_id, password=storage_password):
-        print(f"⚠ Unverified contact {recipient_id}")
+        print(f"Warning: unverified contact {recipient_id}")
 
-    header, ciphertext = ratchet_encrypt(state, plaintext.encode())
-
+    header_updates = None
     if is_new_session:
-        header["x3dh"] = {
+        header_updates = {"x3dh": {
             "ek_public": b64e(state.x3dh_ek_public),
             "ik_public": b64e(state.x3dh_ik_public),
             "otpk_used": state.x3dh_otpk_used,
             "prekey_id": state.x3dh_prekey_id,
             "is_pqxdh": state.x3dh_is_pqxdh
-        }
+        }}
 
         if state.x3dh_otpk_used:
-            header["x3dh"]["otpk_public"] = b64e(recipient_otpk)
+            header_updates["x3dh"]["otpk_public"] = b64e(recipient_otpk)
 
         if is_pqxdh:
-            header["x3dh"]["kyber_ciphertext"] = b64e(state.x3dh_kyber_ct)
+            header_updates["x3dh"]["kyber_ciphertext"] = b64e(state.x3dh_kyber_ct)
 
+    associated_data = _message_associated_data(ik_public, recipient_ik)
+    header, ciphertext = ratchet_encrypt(
+        state,
+        plaintext.encode(),
+        associated_data=associated_data,
+        header_updates=header_updates,
+    )
     header_encoded = encode_header(header)
 
     sealed = seal(
         sender_id=my_id,
+        sender_ik_private=ik_private,
         sender_ik_public=ik_public,
         recipient_ik_public=recipient_ik,
         ciphertext=ciphertext,
         header=header_encoded
     )
 
+    message_number = header.get("n", max(state.send_count - 1, 0))
+
     result = api_send(
         recipient_id=recipient_id,
         sealed_blob=b64e(sealed),
-        message_number=state.send_count,
+        message_number=message_number,
         ttl_seconds=ttl_seconds
     )
 
@@ -236,7 +286,7 @@ def send(recipient_id: int, plaintext: str, storage_password: str, ttl_seconds=N
             "contact_id": recipient_id,
             "sender_id": my_id,
             "recipient_id": recipient_id,
-            "message_number": state.send_count,
+            "message_number": message_number,
             "plaintext": plaintext,
             "sealed_blob": b64e(sealed),
             "created_at": result.get("created_at"),
@@ -259,8 +309,7 @@ def receive_one_from_entry(entry: dict, storage_password: str):
     keys = load_keys(password=storage_password)
 
     my_ik_private = b64d(keys["dh_private"])
-    my_spk_private = b64d(keys["signed_prekey_private"])
-    my_kyber_private = b64d(keys["kyber_prekey_private"])
+    my_ik_public = b64d(keys["dh_public"])
 
     sealed_bytes = b64d(entry["sealed_blob"])
     inner = unseal(my_ik_private, sealed_bytes)
@@ -273,40 +322,29 @@ def receive_one_from_entry(entry: dict, storage_password: str):
     state = load_session(sender_id, password=storage_password)
 
     if state is None:
-        x3dh_data = header.get("x3dh", {})
-        if "ek_public" not in x3dh_data:
-            raise ValueError("missing x3dh bootstrap data")
+        state = _bootstrap_receiver_state(keys, sender_ik, header)
+    else:
+        state.recipient_ik_public = sender_ik
 
-        otpk_private = _find_otpk_private_from_header(keys, x3dh_data)
-
-        # ───── PQ DECISION (RECEIVE) ─────
-        if x3dh_data.get("is_pqxdh") and x3dh_data.get("kyber_ciphertext"):
-            shared_secret = pqxdh_receiver(
-                ik_b_private=my_ik_private,
-                spk_b_private=my_spk_private,
-                kyber_b_private=my_kyber_private,
-                ik_a_public=sender_ik,
-                ek_a_public=b64d(x3dh_data["ek_public"]),
-                kyber_ciphertext=b64d(x3dh_data["kyber_ciphertext"]),
-                opk_b_private=otpk_private
-            )
-        else:
-            shared_secret = x3dh_receiver(
-                ik_b_private=my_ik_private,
-                spk_b_private=my_spk_private,
-                ik_a_public=sender_ik,
-                ek_a_public=b64d(x3dh_data["ek_public"]),
-                opk_b_private=otpk_private
-            )
-
-        state = init_ratchet_receiver(
-            shared_secret=shared_secret,
-            our_ratchet_private=my_spk_private
-        )
-
-    state.recipient_ik_public = sender_ik
-
-    plaintext = ratchet_decrypt(state, header, ciphertext).decode()
+    associated_data = _message_associated_data(sender_ik, my_ik_public)
+    try:
+        plaintext = ratchet_decrypt(
+            state,
+            header,
+            ciphertext,
+            associated_data=associated_data,
+        ).decode()
+    except Exception:
+        if state is None or "ek_public" not in header.get("x3dh", {}):
+            raise
+        recovered_state = _bootstrap_receiver_state(keys, sender_ik, header)
+        plaintext = ratchet_decrypt(
+            recovered_state,
+            header,
+            ciphertext,
+            associated_data=associated_data,
+        ).decode()
+        state = recovered_state
 
     save_session(sender_id, state, password=storage_password)
     try:
@@ -354,7 +392,14 @@ def sync_inbox(storage_password: str):
                 if exc.status_code != 404:
                     raise
             continue
-        result = receive_one_from_entry(entry, storage_password=storage_password)
+        try:
+            result = receive_one_from_entry(entry, storage_password=storage_password)
+        except Exception as exc:
+            print(
+                f"Skipping undecryptable message {entry['id']}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            continue
         if result:
             results.append(result)
     return results
