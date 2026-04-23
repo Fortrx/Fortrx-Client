@@ -3,14 +3,14 @@ from cryptography.hazmat.primitives.serialization import Encoding,PublicFormat,P
 from client.crypto.pq_keys import kyber_decaps,kyber_encaps
 from client.crypto.protocol_kdf import PQXDH_INFO, derive_x3dh_key_material
 
-def _load_x22519_private(raw:bytes):
+def _load_x25519_private(raw:bytes):
     return X25519PrivateKey.from_private_bytes(raw)
 
 def _load_x25519_public(raw: bytes):
     return X25519PublicKey.from_public_bytes(raw)
 
 def _dh(private_bytes: bytes,public_bytes: bytes):
-    priv = _load_x22519_private(private_bytes)
+    priv = _load_x25519_private(private_bytes)
     pub = _load_x25519_public(public_bytes)
     return priv.exchange(pub)
 
