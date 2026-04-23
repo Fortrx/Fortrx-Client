@@ -53,5 +53,8 @@ def test_decrypt_legacy_payload():
 
 
 def test_decrypt_rejects_short_payload():
-    with pytest.raises(StorageError):
+    with pytest.raises(StorageError) as exc_info:
         _decrypt(b"tiny", "password123")
+
+    message = str(exc_info.value).lower()
+    assert "short" in message or "payload" in message
