@@ -32,10 +32,6 @@ def test_encrypt_decrypt_pair():
     chain = os.urandom(32)
     sender = make_state_with_chain(chain)
     receiver = make_state_with_chain(chain)
-    receiver.recv_chain_key = chain
-    receiver.recv_chain_key = chain
-    receiver.recv_chain_key = chain
-    receiver.recv_chain_key = chain
     # receiver's recv_chain_key should start equal to sender's sending chain
     receiver.recv_chain_key = chain
 
