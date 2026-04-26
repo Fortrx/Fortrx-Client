@@ -29,7 +29,7 @@ def _display_safety_number(
 ):
     console.print()
     console.print(Panel(
-        f"[bold cyan] Safety Number[/bold cyan] with"
+        f"[bold cyan] Safety Number[/bold cyan] with "
         f"[bold] {their_username}[/bold] (ID: {their_id})",
         expand=False
     ))
